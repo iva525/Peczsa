@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glovo MVP</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js"></script>
+
+<style>
+body{margin:0;font-family:Arial;background:#0b0b0b;color:white;}
+header{background:#00c853;padding:10px;text-align:center;font-weight:bold;}
+
+.wrap{display:flex;height:calc(100vh - 60px);}
+.box{flex:1;padding:10px;overflow:auto;}
+
+.card{background:#1c1c1c;padding:10px;border-radius:10px;margin:5px 0;}
+button{background:#00c853;border:none;padding:6px;color:white;border-radius:6px;}
+input{padding:8px;margin:5px;border-radius:6px;border:none;width:90%;}
+
+.badge{background:white;color:black;padding:2px 6px;border-radius:8px;font-size:12px;}
+</style>
+</head>
+
+<body>
+
+<header>🚚 GLOVO MVP ONE FILE</header>
+
+<div class="wrap">
+
+<!-- LEFT -->
+<div class="box">
+
+<h3>Login</h3>
+<input id="email" placeholder="email">
+<input id="pass" placeholder="pass">
+<button onclick="login()">Login</button>
+<button onclick="reg()">Register</button>
+
+<hr>
+
+<h3>Order Food</h3>
+<button onclick="order()">🍕 Order Pizza</button>
+
+<hr>
+
+<h3>My Orders</h3>
+<div id="my"></div>
+
+</div>
+
+<!-- RIGHT -->
+<div class="box">
+
+<h3>Admin / Courier Panel</h3>
+<div id="all"></div>
+
+<hr>
+
+<h3>Courier GPS</h3>
+<button onclick="startGPS()">Start GPS</button>
+
+<div id="gps"></div>
+
+<hr>
+
+<h3>Chat</h3>
+<div id="chat"></div>
+<input id="msg">
+<button onclick="send()">Send</button>
+
+</div>
+
+</div>
+
+<script>
+
+/* FIREBASE */
+const firebaseConfig = {
+  apiKey:"YOUR_KEY",
+  authDomain:"YOUR.firebaseapp.com",
+  databaseURL:"https://YOUR.firebaseio.com",
+  projectId:"YOUR_PROJECT"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const auth=firebase.auth();
+const db=firebase.database();
+
+let uid=null;
+let role="user";
+
+/* AUTH */
+function login(){
+auth.signInWithEmailAndPassword(email.value,pass.value)
+.then(u=>{
+uid=u.user.uid;
+init();
+});
+}
+
+function reg(){
+auth.createUserWithEmailAndPassword(email.value,pass.value);
+}
+
+/* ROLE AUTO */
+function init(){
+document.getElementById("email").style.display="none";
+document.getElementById("pass").style.display="none";
+
+/* default role */
+db.ref("users/"+uid).once("value").then(s=>{
+if(!s.val()){
+db.ref("users/"+uid).set({role:"user"});
+}
+});
+
+listenOrders();
+listenChat();
+}
+
+/* ORDER */
+function order(){
+db.ref("orders").push({
+user:uid,
+status:"searching",
+courier:null,
+item:"Pizza"
+});
+}
+
+/* LIST ORDERS */
+function listenOrders(){
+db.ref("orders").on("value",s=>{
+let d=s.val()||{};
+let my=document.getElementById("my");
+let all=document.getElementById("all");
+
+my.innerHTML="";
+all.innerHTML="";
+
+Object.keys(d).forEach(id=>{
+let o=d[id];
+
+/* MY ORDERS */
+if(o.user===uid){
+my.innerHTML+=`
+<div class="card">
+${o.item}<br>
+Status: <span class="badge">${o.status}</span><br>
+<button onclick="assign('${id}')">Assign me courier</button>
+</div>`;
+}
+
+/* ADMIN VIEW */
+all.innerHTML+=`
+<div class="card">
+${o.item}<br>
+User:${o.user}<br>
+Status:${o.status}<br>
+<button onclick="next('${id}',o.status)">next</button>
+</div>`;
+});
+});
+}
+
+/* STATUS FLOW */
+function next(id,status){
+let flow=["searching","accepted","on_way","delivered"];
+let i=flow.indexOf(status);
+if(i<flow.length-1){
+db.ref("orders/"+id).update({status:flow[i+1]});
+}
+}
+
+/* COURIER ASSIGN */
+function assign(id){
+db.ref("orders/"+id).update({
+courier:uid,
+status:"accepted"
+});
+}
+
+/* GPS */
+function startGPS(){
+navigator.geolocation.watchPosition(pos=>{
+db.ref("couriers/"+uid).set({
+lat:pos.coords.latitude,
+lng:pos.coords.longitude
+});
+
+document.getElementById("gps").innerText=
+pos.coords.latitude+" "+pos.coords.longitude;
+});
+}
+
+/* CHAT */
+function send(){
+db.ref("chat").push({
+from:uid,
+text:msg.value
+});
+msg.value="";
+}
+
+function listenChat(){
+db.ref("chat").on("value",s=>{
+let d=s.val()||{};
+let box=document.getElementById("chat");
+box.innerHTML="";
+Object.values(d).forEach(m=>{
+box.innerHTML+=`
+<div class="card">
+${m.from}: ${m.text}
+</div>`;
+});
+});
+}
+
+</script>
+
+</body>
+</html>
